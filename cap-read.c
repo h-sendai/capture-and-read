@@ -26,10 +26,14 @@ int   snaplen       = 68;           /* tcpdump snaplen: 68 bytes */
 long  threshold     = 90*1024*1024; /* if 90MB/s, stop tcpdump and exit */
 char *ip_address    = NULL;         /* remote ip address */
 int   port          = 0;            /* remote port number */
+int   read_count_interval = 1;      /* 1 sec */
+int   socket_read_bufsize = 64*1024; /* 64kB read */
+
+volatile sig_atomic_t has_alarm = 0;
 
 int usage()
 {
-    char msg[] = "Usage: cap-read [-i interface] [-C cap_file_size(MB)] [-W filecount]  [-w cap_filename] [-s snaplen] [-t threshold (Bytes)] ip_address port";
+    char msg[] = "Usage: cap-read [-i interface] [-C cap_file_size(MB)] [-W filecount]  [-w cap_filename] [-s snaplen] [-t threshold (Bytes)] [-I read_count_interval ] [-b socket_read_bufsize] ip_address port";
     fprintf(stderr, "%s\n", msg);
 
     return 0;
@@ -42,6 +46,19 @@ int start_tcpdump(char *tcpdump_command)
     fprintf(stderr, "tcpdump is running in background\n");
 
     return 0;
+}
+
+void sig_alarm(int signo)
+{
+    has_alarm = 1;
+    return;
+}
+
+void sig_int(int signo)
+{
+    system("pkill tcpdump");
+    exit(0);
+    return;
 }
 
 int create_tcpdump_command(char *command_buf)
@@ -84,12 +101,19 @@ int create_tcpdump_command(char *command_buf)
 int main(int argc, char *argv[])
 {
     char tcpdump_command[1024];
-    int c;
-    while ( (c = getopt(argc, argv, "di:C:W:w:s:t:")) != -1) {
+    int c, n;
+    int sockfd;
+    char *socket_read_buf = NULL;
+    long read_byte_size = 0;
+
+    while ( (c = getopt(argc, argv, "dhi:C:W:w:s:t:I:b:")) != -1) {
         switch (c) {
             case 'd':
                 debug = 1;
                 break;
+            case 'h':
+                usage();
+                exit(0);
             case 'i':
                 interface = optarg;
                 break;
@@ -108,6 +132,12 @@ int main(int argc, char *argv[])
             case 't':
                 threshold = get_num(optarg);
                 break;
+            case 'I':
+                read_count_interval = strtol(optarg, NULL, 0);
+                break;
+            case 'b':
+                socket_read_bufsize = strtol(optarg, NULL, 0);
+                break;
             default:
                 break;
         }
@@ -123,9 +153,43 @@ int main(int argc, char *argv[])
     }
     system(tcpdump_command);
     
-    //sleep(1);
-    //system("pkill tcpdump");
-    //fprintf(stderr, "tcpdump was killed\n");
+    my_signal(SIGALRM, sig_alarm);
+    my_signal(SIGINT,  sig_int);
+    set_timer(read_count_interval, 0, read_count_interval, 0);
+
+    socket_read_buf = malloc(socket_read_bufsize);
+    if (socket_read_buf == NULL) {
+        err(1, "malloc for socket_read_buf");
+    }
+    sockfd = tcp_socket();
+    if (connect_tcp(sockfd, ip_address, port) < 0) {
+        errx(1, "connect_tcp");
+    }
+
+    for ( ; ; ) {
+        if (has_alarm) {
+            if (read_byte_size < threshold) {
+                system("pkill tcpdump");
+                exit(0);
+            }
+            has_alarm = 0;
+            read_byte_size = 0;
+        }
+        n = read(sockfd, socket_read_buf, socket_read_bufsize);
+        if (n < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            else {
+                err(1, "read");
+            }
+        }
+        if (n == 0) { /* EOF */
+           system("pkill tcpdump");
+           exit(0);
+        }
+        read_byte_size += n;
+    }
 
     return 0;
 }
