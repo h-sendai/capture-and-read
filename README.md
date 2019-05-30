@@ -16,8 +16,12 @@ tcpdumpには-W MB_sizeというオプションがあり、このバイト数ま
 ## 使い方
 
 コンパイルしてcap-and-read -hとするとヘルプが出る:
-    % ./cap-read -h
-    Usage: cap-read [-i interface] [-C cap_file_size(MB)] [-W filecount]
-           [-w cap_filename] [-s snaplen] [-t threshold (Bytes)]
-           [-I read_count_interval ] [-b socket_read_bufsize] ip_address port
 
+    Usage: cap-read [-i interface] [-C cap_file_size(MB)]
+           [-W filecount]  [-w cap_filename] [-s snaplen]
+           [-t threshold (Bytes)] [-I read_count_interval ]
+           [-b socket_read_bufsize] ip_address port
+           -t and -b: 4k == 4*1024, 4m == 4*1024*1024
+
+-tと-bについては4kと指定すると4*1024の意味になり、4mと指定すると4*1024*1024
+の意味になる。
