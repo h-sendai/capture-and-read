@@ -33,7 +33,11 @@ volatile sig_atomic_t has_alarm = 0;
 
 int usage()
 {
-    char msg[] = "Usage: cap-read [-i interface] [-C cap_file_size(MB)] [-W filecount]  [-w cap_filename] [-s snaplen] [-t threshold (Bytes)] [-I read_count_interval ] [-b socket_read_bufsize] ip_address port";
+    char msg[] = "Usage: cap-read [-i interface] [-C cap_file_size(MB)]\n"
+                 "       [-W filecount]  [-w cap_filename] [-s snaplen]\n"
+                 "       [-t threshold (Bytes)] [-I read_count_interval ]\n"
+                 "       [-b socket_read_bufsize] ip_address port\n"
+                 "-t and -b: 4k == 4*1024, 4m == 4*1024*1024";
     fprintf(stderr, "%s\n", msg);
 
     return 0;
@@ -136,7 +140,7 @@ int main(int argc, char *argv[])
                 read_count_interval = strtol(optarg, NULL, 0);
                 break;
             case 'b':
-                socket_read_bufsize = strtol(optarg, NULL, 0);
+                socket_read_bufsize = get_num(optarg);
                 break;
             default:
                 break;
