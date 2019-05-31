@@ -50,7 +50,7 @@ void sig_alarm(int signo)
     return;
 }
 
-void sig_int(int signo)
+void sig_term_int(int signo)
 {
     kill(tcpdump_pid, SIGTERM);
     exit(0);
@@ -162,8 +162,9 @@ int main(int argc, char *argv[])
     }
     /* parent */
     
+    my_signal(SIGINT,  sig_term_int);
+    my_signal(SIGTERM, sig_term_int);
     my_signal(SIGALRM, sig_alarm);
-    my_signal(SIGINT,  sig_int);
     set_timer(read_count_interval, 0, read_count_interval, 0);
 
     socket_read_buf = malloc(socket_read_bufsize);
@@ -178,7 +179,7 @@ int main(int argc, char *argv[])
     for ( ; ; ) {
         if (has_alarm) {
             if (read_byte_size < threshold) {
-                system("pkill tcpdump");
+                kill(tcpdump_pid, SIGTERM);
                 exit(0);
             }
             has_alarm = 0;
