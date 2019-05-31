@@ -28,6 +28,7 @@ char *ip_address    = NULL;         /* remote ip address */
 int   port          = 0;            /* remote port number */
 int   read_count_interval = 1;      /* 1 sec */
 int   socket_read_bufsize = 64*1024; /* 64kB read */
+pid_t tcpdump_pid;
 
 volatile sig_atomic_t has_alarm = 0;
 
@@ -43,15 +44,6 @@ int usage()
     return 0;
 }
 
-int start_tcpdump(char *tcpdump_command)
-{
-    fprintf(stderr, "start tcpdump in background: %s\n", tcpdump_command);
-    system(tcpdump_command);
-    fprintf(stderr, "tcpdump is running in background\n");
-
-    return 0;
-}
-
 void sig_alarm(int signo)
 {
     has_alarm = 1;
@@ -60,51 +52,61 @@ void sig_alarm(int signo)
 
 void sig_int(int signo)
 {
-    system("pkill tcpdump");
+    kill(tcpdump_pid, SIGTERM);
     exit(0);
     return;
 }
 
-int create_tcpdump_command(char *command_buf)
+int do_tcpdump()
 {
-    /* tcpdump command example:
-     * tcpdump -nn -i exp0 -C 1 -W 10 -s 68 -w a.cap.
-     */
-    
-    char tmp[16];
+    char b_cap_file_size[16];
+    char b_filecount[16];
+    char b_snaplen[16];
+    char *my_argv[1024];
 
-    /* command base */
-    strcat(command_buf, "tcpdump -nn");
+    int my_argc = 0;
+    my_argv[my_argc++] = "tcpdump";
+
+    /* -i interface */
+    my_argv[my_argc++] = "-nn";
     if (interface != NULL) {
-        strcat(command_buf, " -i ");
-        strcat(command_buf, interface);
+        my_argv[my_argc++] = "-i";
+        my_argv[my_argc++] = interface;
     }
+
     /* -C cap_file_size */
-    strcat(command_buf, " -C ");
-    snprintf(tmp, sizeof(tmp), "%d", cap_file_size);
-    strcat(command_buf, tmp);
+    my_argv[my_argc++] = "-C";
+    snprintf(b_cap_file_size, sizeof(b_cap_file_size), "%d", cap_file_size);
+    my_argv[my_argc++] = b_cap_file_size;
 
     /* -W filecount */
-    strcat(command_buf, " -W ");
-    snprintf(tmp, sizeof(tmp), "%d", filecount);
-    strcat(command_buf, tmp);
+    my_argv[my_argc++] = "-W";
+    snprintf(b_filecount, sizeof(b_filecount), "%d", filecount);
+    my_argv[my_argc++] = b_filecount;
 
     /* -s snaplen */
-    strcat(command_buf, " -s ");
-    snprintf(tmp, sizeof(tmp), "%d", snaplen);
-    strcat(command_buf, tmp);
+    my_argv[my_argc++] = "-s";
+    snprintf(b_snaplen, sizeof(b_snaplen), "%d", snaplen);
+    my_argv[my_argc++] = b_snaplen;
 
-    /* -w cap_filename*/
-    strcat(command_buf, " -w ");
-    strcat(command_buf, cap_filename);
+    /* -w capfile */
+    my_argv[my_argc++] = "-w";
+    my_argv[my_argc++] = cap_filename;
+    
+    my_argv[my_argc++] = (char *) 0;
 
-    strcat(command_buf, " < /dev/null > /dev/null 2>&1 &");
+    //close(STDIN_FILENO);
+    //close(STDOUT_FILENO);
+    //close(STDERR_FILENO);
+    if (execvp("tcpdump", my_argv) < 0) {
+        err(1, "execvp tcpdump");
+    }
+
     return 0;
 }
 
 int main(int argc, char *argv[])
 {
-    char tcpdump_command[1024];
     int c, n;
     int sockfd;
     char *socket_read_buf = NULL;
@@ -151,13 +153,14 @@ int main(int argc, char *argv[])
     ip_address = argv[0];
     port       = strtol(argv[1], NULL, 0);
 
-    memset(tcpdump_command, 0, sizeof(tcpdump_command));
-    create_tcpdump_command(tcpdump_command);
-    if (debug) {
-        printf("tcpdump command: %s\n", tcpdump_command);
-        exit(1);
+    if ( (tcpdump_pid = fork()) < 0) {
+        err(1, "fork for tcpdump");
     }
-    system(tcpdump_command);
+    if (tcpdump_pid == 0) { /* child */
+        do_tcpdump();
+        exit(0);
+    }
+    /* parent */
     
     my_signal(SIGALRM, sig_alarm);
     my_signal(SIGINT,  sig_int);
