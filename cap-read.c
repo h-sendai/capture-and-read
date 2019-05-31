@@ -150,6 +150,8 @@ int main(int argc, char *argv[])
     argv += optind;
     ip_address = argv[0];
     port       = strtol(argv[1], NULL, 0);
+
+    memset(tcpdump_command, 0, sizeof(tcpdump_command));
     create_tcpdump_command(tcpdump_command);
     if (debug) {
         printf("tcpdump command: %s\n", tcpdump_command);
