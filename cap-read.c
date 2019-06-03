@@ -195,7 +195,7 @@ int main(int argc, char *argv[])
             }
         }
         if (n == 0) { /* EOF */
-           system("pkill tcpdump");
+           kill(tcpdump_pid, SIGTERM);
            exit(0);
         }
         read_byte_size += n;
